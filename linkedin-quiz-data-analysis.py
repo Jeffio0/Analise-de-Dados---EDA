@@ -1,10 +1,10 @@
 import os
 import kagglehub
+import matplotlib.pyplot as plt
 import pandas as pd
 
-# Download latest version
+# 1. Ingestão dos Dados via KaggleHub
 path = kagglehub.dataset_download("kalilurrahman/linkedin-poll-data")
-
 print("Path to dataset files:", path)
 
 arquivos = os.listdir(path)
@@ -12,9 +12,8 @@ print("arquivos", arquivos)
 
 caminho_completo = os.path.join(path, arquivos[0])
 dados = pd.read_csv(caminho_completo)
-dados.head()
 
-# rename das colunas de pt-br -> ing direto no dataframe
+# 2. Padronização das Colunas (PT-BR)
 colunas_br = {
     'Quiz_number': 'num_quiz',
     'Total_Views': 'total_views',
@@ -25,42 +24,53 @@ colunas_br = {
     'Max_Right': 'max_acerto',
 }
 dados.rename(columns=colunas_br, inplace=True)
-# tipo de dados das colunas
 dados.info()
 
+# 3. Engenharia de Atributos (Métricas Percentuais)
 # nova coluna engajamento % ((total_respostas/total_visualizações)*100)
 dados['engajamento'] = (
     (dados['total_respostas'] / dados['total_views']) * 100
 ).round(2)
+
 # nova coluna acertos % ((resp_corretas/total_respostas)*100)
 dados['acertos'] = (
     (dados['resp_corretas'] / dados['total_respostas']) * 100
 ).round(2)
-dados.head().sort_values(by='acertos', ascending=False)
 
-# organizando listando o quiz com maior acerto e menor acerto
-maior_acerto = dados[['num_quiz', 'resp_corretas']].sort_values(
-    by='resp_corretas', ascending=False
+# 4. Análise por Respostas Corretas (Valores Absolutos)
+maior_resp = dados[
+    ['num_quiz', 'resp_corretas', 'acertos', 'dificuldade_3']
+].sort_values(by='resp_corretas', ascending=False)
+menor_resp = dados[
+    ['num_quiz', 'resp_corretas', 'acertos', 'dificuldade_3']
+].sort_values(by='resp_corretas', ascending=True)
+
+display(maior_resp.head(1))
+display(menor_resp.head(1))
+
+# 5. Análise por Taxa de Acerto (%)
+maior_taxa = dados[['num_quiz', 'acertos', 'dificuldade_3']].sort_values(
+    by='acertos', ascending=False
 )
-menor_acerto = dados[['num_quiz', 'resp_corretas']].sort_values(
-    by='resp_corretas', ascending=True
+menor_taxa = dados[['num_quiz', 'acertos', 'dificuldade_3']].sort_values(
+    by='acertos', ascending=True
 )
-# visualizando somente o maior e menor valor
-display(maior_acerto.head(1))
-display(menor_acerto.head(1))
 
-# criação de consulta para quiz > 100 curtidas, acerto > 50%
-df_quiz = dados.query('total_curtidas > 100 & acertos > 50')
-df_quiz.head()
+display(maior_taxa.head(1))
+display(menor_taxa.head(1))
 
-# Coluna condicional para nível de dificuldade aplicando o lambda para dois níveis de dificuldade
+# 6. Filtro Condicional (.query)
+# Quizzes com alta interatividade (>100 curtidas) e taxa de acertos > 60%
+df_quiz = dados.query('total_curtidas > 100 & acertos > 60')
+display(df_quiz.head())
+
+# 7. Regra de Negócio: Categorização em 2 Níveis
 dados['dificuldade'] = dados['acertos'].apply(
     lambda x: 'Difícil' if x < 60 else 'Fácil'
 )
-dados.head()
 
 
-# função para três níveis de dificuldade
+# 8. Regra de Negócio: Categorização em 3 Níveis
 def categoria_dificuldade(acerto):
   if acerto >= 70:
     return 'Fácil'
@@ -70,9 +80,28 @@ def categoria_dificuldade(acerto):
     return 'Difícil'
 
 
-# Criação da nova coluna com 3 dificuldades
 dados['dificuldade_3'] = dados['acertos'].apply(categoria_dificuldade)
-dados.head()
 
 # Contagem das questões por dificuldade
-dados.groupby('dificuldade_3')['num_quiz'].count()
+print(dados.groupby('dificuldade_3')['num_quiz'].count())
+
+# 9. Visualização Gráfica (Distribuição Percentual)
+plot_dificuldade = (
+    dados['dificuldade_3'].value_counts(normalize=True) * 100
+).round(2)
+
+ax = plot_dificuldade.plot(
+    kind='bar',
+    figsize=(7, 7),
+    color='blue',
+    xlabel='Dificuldade do Quiz',
+    ylabel='Percentual (%)',
+    rot=0,
+)
+
+# Adiciona o percentual no topo de cada barra
+ax.bar_label(ax.containers[0], fmt='%.2f%%', padding=3)
+plt.title('Distribuição Percentual de Dificuldade dos Quizzes')
+plt.ylim(0, plot_dificuldade.max() + 10)
+
+plt.show()
